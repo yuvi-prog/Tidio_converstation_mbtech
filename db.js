@@ -29,6 +29,16 @@ db.exec(`
     summary       TEXT,
     created_at    TEXT DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS chat_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    visitor_id  TEXT NOT NULL,
+    actor       TEXT NOT NULL,
+    message     TEXT NOT NULL,
+    received_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_chat_events_visitor ON chat_events(visitor_id, received_at);
 `);
 
 const queries = {
@@ -47,6 +57,23 @@ const queries = {
   `),
 
   getTranscript: db.prepare('SELECT * FROM transcripts WHERE id = ?'),
+
+  insertChatEvent: db.prepare(
+    'INSERT INTO chat_events (visitor_id, actor, message, received_at) VALUES (?, ?, ?, ?)'
+  ),
+
+  // Sessions active within the last 3 hours but with last message older than inactivity cutoff
+  getInactiveSessions: db.prepare(`
+    SELECT visitor_id, MAX(received_at) as last_at, MIN(received_at) as first_at, COUNT(*) as msg_count
+    FROM chat_events
+    WHERE received_at > ?
+    GROUP BY visitor_id
+    HAVING last_at <= ?
+  `),
+
+  getSessionMessages: db.prepare(
+    'SELECT * FROM chat_events WHERE visitor_id = ? AND received_at > ? ORDER BY received_at ASC'
+  ),
 };
 
 module.exports = { db, queries };
