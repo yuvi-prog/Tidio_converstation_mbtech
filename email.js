@@ -73,10 +73,11 @@ function buildHtml({ contactName, contactEmail, summary, transcriptUrl, messageC
 </html>`;
 }
 
-async function sendConversationEmail(data) {
+async function sendConversationEmail(data, toOverride) {
   const name = data.contactName || 'Unknown Visitor';
+  const recipients = toOverride || RECIPIENTS;
   await sgMail.send({
-    to: RECIPIENTS,
+    to: recipients,
     isMultiple: true,
     from: { email: process.env.FROM_EMAIL || 'support@memoryblock.com.au', name: 'Memory Block Support' },
     subject: `💬 Chat Summary — ${name}`,
