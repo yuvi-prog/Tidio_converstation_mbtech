@@ -16,7 +16,7 @@ function esc(s) {
 }
 
 function actorLabel(actor) {
-  return actor === 'visitor' ? 'Customer' : 'James (bot)';
+  return actor === 'visitor' ? 'Customer' : 'AI Agent';
 }
 
 function bubbleClass(actor) {

@@ -27,7 +27,7 @@ app.post('/chat-event', (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   const { visitorId, actor, message } = req.body || {};
   if (typeof visitorId !== 'string' || !/^v-[\w-]{1,60}$/.test(visitorId) ||
-      !ACTORS.has(actor) || typeof message !== 'string' || !message.trim()) {
+      !ACTORS.has(actor) || typeof message !== 'string' || !message.trim() || message === 'preChat') {
     return res.status(400).json({ error: 'invalid' });
   }
   try {
