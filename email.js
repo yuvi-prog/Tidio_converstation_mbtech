@@ -17,8 +17,13 @@ function fmt(isoStr) {
   });
 }
 
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function buildHtml({ contactName, contactEmail, summary, transcriptUrl, messageCount, sessionStart, sessionEnd }) {
-  const name = contactName || 'Unknown Visitor';
+  const name = esc(contactName || 'Website Visitor');
+  contactEmail = contactEmail && esc(contactEmail);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -61,7 +66,7 @@ function buildHtml({ contactName, contactEmail, summary, transcriptUrl, messageC
 
       <div class="summary">
         <div class="summary-label">AI Summary</div>
-        <p>${summary.replace(/\n/g, '<br>')}</p>
+        <p>${esc(summary).replace(/\n/g, '<br>')}</p>
       </div>
 
       <a href="${transcriptUrl}" class="btn">View Full Transcript &rarr;</a>
@@ -74,7 +79,7 @@ function buildHtml({ contactName, contactEmail, summary, transcriptUrl, messageC
 }
 
 async function sendConversationEmail(data, toOverride) {
-  const name = data.contactName || 'Unknown Visitor';
+  const name = data.contactName || 'Website Visitor';
   const recipients = toOverride || RECIPIENTS;
   await sgMail.send({
     to: recipients,

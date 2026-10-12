@@ -54,13 +54,13 @@ function extractiveSummary(messages) {
   const duration = mins < 1 ? '< 1 min' : `${mins} min${mins !== 1 ? 's' : ''}`;
 
   const lines = [];
-  if (opening) lines.push(`<b>Asked:</b> "${opening.message_content.trim()}"`);
+  if (opening) lines.push(`Asked: "${opening.message_content.trim()}"`);
   if (lastResponse) {
     const text = lastResponse.message_content.trim();
-    lines.push(`<b>Last response:</b> "${text.length > 280 ? text.slice(0, 277) + '…' : text}"`);
+    lines.push(`Last response: "${text.length > 280 ? text.slice(0, 277) + '…' : text}"`);
   }
-  lines.push(`<b>Stats:</b> ${messages.length} messages (${visitorMsgs.length} from visitor) · ${duration}`);
-  return lines.join('<br>');
+  lines.push(`Stats: ${messages.length} messages (${visitorMsgs.length} from visitor) · ${duration}`);
+  return lines.join('\n');
 }
 
 async function summarizeConversation(messages, contactName) {

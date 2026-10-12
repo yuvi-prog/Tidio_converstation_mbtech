@@ -44,11 +44,18 @@ db.exec(`
 const queries = {
   threadEmailed: db.prepare('SELECT emailed_at FROM emailed_threads WHERE thread_id = ?'),
 
-  insertEmailedThread: db.prepare(`
-    INSERT OR IGNORE INTO emailed_threads
-      (thread_id, visitor_id, contact_name, contact_email, transcript_id, session_start, session_end, message_count)
+  // Upsert so a returning visitor's later conversations update emailed_at (otherwise they'd re-email every poll)
+  upsertEmailedThread: db.prepare(`
+    INSERT INTO emailed_threads
+      (thread_id, visitor_id, contact_name, contact_email, transcript_id, session_start, session_end, message_count, emailed_at)
     VALUES
-      (?, ?, ?, ?, ?, ?, ?, ?)
+      (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(thread_id) DO UPDATE SET
+      transcript_id = excluded.transcript_id,
+      session_start = excluded.session_start,
+      session_end   = excluded.session_end,
+      message_count = excluded.message_count,
+      emailed_at    = excluded.emailed_at
   `),
 
   insertTranscript: db.prepare(`
@@ -72,7 +79,11 @@ const queries = {
   `),
 
   getSessionMessages: db.prepare(
-    'SELECT * FROM chat_events WHERE visitor_id = ? AND received_at > ? ORDER BY received_at ASC'
+    'SELECT * FROM chat_events WHERE visitor_id = ? AND received_at > ? ORDER BY received_at ASC, id ASC'
+  ),
+
+  countRecentEvents: db.prepare(
+    'SELECT COUNT(*) AS n FROM chat_events WHERE visitor_id = ? AND received_at > ?'
   ),
 };
 

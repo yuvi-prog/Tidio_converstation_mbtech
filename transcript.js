@@ -11,11 +11,12 @@ function fmt(isoStr) {
   });
 }
 
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function actorLabel(actor) {
-  if (actor === 'visitor') return 'Customer';
-  if (actor === 'agent') return 'Agent';
-  if (actor === 'flow') return 'Bot';
-  return 'Lyro AI';
+  return actor === 'visitor' ? 'Customer' : 'James (bot)';
 }
 
 function bubbleClass(actor) {
@@ -27,17 +28,15 @@ router.get('/transcript/:id', (req, res) => {
   if (!row) return res.status(404).send('Transcript not found.');
 
   const messages = JSON.parse(row.messages);
-  const name = row.contact_name || 'Unknown Visitor';
-  const email = row.contact_email || '';
+  const name = esc(row.contact_name || 'Website Visitor');
+  const email = row.contact_email ? esc(row.contact_email) : '';
 
   const bubbles = messages.map(m => `
     <div class="${bubbleClass(m.actor)}">
       <div class="meta">${actorLabel(m.actor)} · ${fmt(m.time_sent)}</div>
-      <div class="text">${m.message_content.replace(/</g, '&lt;').replace(/\n/g, '<br>')}</div>
+      <div class="text">${esc(m.message_content)}</div>
     </div>
   `).join('');
-
-  const conversationLink = messages.find(m => m.conversation_link)?.conversation_link || null;
 
   res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -71,12 +70,11 @@ router.get('/transcript/:id', (req, res) => {
       <h1>${name}${email ? ` &lt;${email}&gt;` : ''}</h1>
       <div class="sub">${messages.length} messages &middot; ${fmt(messages[0].time_sent)} – ${fmt(messages[messages.length - 1].time_sent)}</div>
     </div>
-    ${conversationLink ? `<a class="tidio-link" href="${conversationLink}" target="_blank">Open in Tidio ↗</a>` : ''}
   </div>
 
   <div class="summary-bar">
     <h2>AI Summary</h2>
-    <p>${row.summary.replace(/\n/g, '<br>').replace(/</g, '&lt;')}</p>
+    <p>${esc(row.summary).replace(/\n/g, '<br>')}</p>
   </div>
 
   <div class="feed">
