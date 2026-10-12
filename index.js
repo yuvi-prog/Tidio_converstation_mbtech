@@ -2,78 +2,85 @@ require('dotenv').config();
 
 const express = require('express');
 const cron = require('node-cron');
+const { v4: uuidv4 } = require('uuid');
+
 const transcriptRouter = require('./transcript');
 const { runPoll } = require('./poller');
-const { getRecentMessagesByThread, getContact } = require('./tidio');
+const { getRecentContacts, getContactMessages } = require('./tidio');
 const { summarizeConversation } = require('./summarize');
 const { sendConversationEmail } = require('./email');
-const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Transcript viewer
 app.use(transcriptRouter);
 
-// Health check
 app.get('/', (req, res) => res.json({ status: 'ok', service: 'tidio-emailer' }));
 
-// Test endpoint — sends the most recent conversation to yuvi only, no DB write
+// Test endpoint — finds the most recent conversation and emails just yuvi
 app.get('/test', async (req, res) => {
   try {
-    const since = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString(); // last 24h
-    const threads = await getRecentMessagesByThread(since);
+    const { queries } = require('./db');
+    const contacts = await getRecentContacts(7); // look back 7 days
 
-    if (threads.size === 0) {
-      return res.json({ ok: false, message: 'No conversations found in the last 24 hours.' });
+    if (!contacts.length) {
+      return res.json({ ok: false, message: 'No contacts found in the last 7 days.' });
     }
 
-    // Pick the thread with the most recent last message
-    let bestThread = null, bestMessages = null, bestTime = 0;
-    for (const [, messages] of threads) {
-      const t = new Date(messages[messages.length - 1].time_sent).getTime();
-      if (t > bestTime) { bestTime = t; bestThread = messages[0].thread_id; bestMessages = messages; }
+    // Find contact with the most recent message
+    let bestContact = null, bestRaw = null, bestTime = 0;
+    for (const contact of contacts) {
+      const msgs = await getContactMessages(contact.id);
+      if (!msgs.length) continue;
+      const t = new Date(msgs[msgs.length - 1].created_at).getTime();
+      if (t > bestTime) { bestTime = t; bestContact = contact; bestRaw = msgs; }
     }
 
-    const visitorId = bestMessages[0].visitor_id;
-    let contact = null;
-    try { contact = await getContact(String(visitorId)); } catch (_) {}
+    if (!bestRaw) {
+      return res.json({ ok: false, message: 'No messages found for recent contacts.' });
+    }
 
-    const contactName = contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') || null : null;
-    const contactEmail = contact?.email || null;
+    const contactName  = [bestContact.first_name, bestContact.last_name].filter(Boolean).join(' ') || null;
+    const contactEmail = bestContact.email || null;
 
-    const summary = await summarizeConversation(bestMessages, contactName);
+    // Normalise to common shape
+    const messages = bestRaw.map(m => ({
+      actor:             m.author_type === 'contact'  ? 'visitor' :
+                         m.author_type === 'operator' ? 'agent' : 'bot',
+      message_content:   m.message,
+      time_sent:         m.created_at,
+      conversation_link: m.conversation_url || null,
+    }));
+
+    const summary      = await summarizeConversation(messages, contactName);
     const transcriptId = uuidv4();
     const transcriptUrl = `${process.env.BASE_URL || 'http://localhost:3000'}/transcript/${transcriptId}`;
 
-    // Store transcript so the link works
-    const { queries } = require('./db');
     queries.insertTranscript.run(
-      transcriptId, String(bestThread), contactName, contactEmail,
-      JSON.stringify(bestMessages), summary
+      transcriptId, bestContact.id, contactName, contactEmail,
+      JSON.stringify(messages), summary
     );
 
     await sendConversationEmail({
       contactName, contactEmail, summary, transcriptUrl,
-      messageCount: bestMessages.length,
-      sessionStart: bestMessages[0].time_sent,
-      sessionEnd: bestMessages[bestMessages.length - 1].time_sent,
+      messageCount: messages.length,
+      sessionStart: messages[0].time_sent,
+      sessionEnd:   messages[messages.length - 1].time_sent,
     }, ['yuvi@memoryblock.com.au']);
 
-    res.json({ ok: true, message: `Test email sent to yuvi@memoryblock.com.au`, thread: bestThread, messages: bestMessages.length, contact: contactName || visitorId });
+    res.json({ ok: true, message: 'Test email sent to yuvi@memoryblock.com.au', contact: contactName || bestContact.id, messages: messages.length });
   } catch (err) {
     console.error('Test error:', err);
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
-// Run poll every 5 minutes
+// Poll every 5 minutes
 cron.schedule('*/5 * * * *', () => {
   runPoll().catch(err => console.error('Poll error:', err));
 });
 
 app.listen(PORT, () => {
   console.log(`Tidio emailer running on :${PORT}`);
-  // Run once at startup so we don't have to wait 5 minutes
   runPoll().catch(err => console.error('Initial poll error:', err));
 });
