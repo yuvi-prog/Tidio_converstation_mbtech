@@ -21,7 +21,7 @@ app.get('/', (req, res) => res.json({ status: 'ok', service: 'tidio-emailer' }))
 // Test endpoint — sends the most recent conversation to yuvi only, no DB write
 app.get('/test', async (req, res) => {
   try {
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(); // last 24h
+    const since = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString(); // last 24h
     const threads = await getRecentMessagesByThread(since);
 
     if (threads.size === 0) {
