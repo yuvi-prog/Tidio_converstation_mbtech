@@ -5,13 +5,39 @@ const cron = require('node-cron');
 const { v4: uuidv4 } = require('uuid');
 
 const transcriptRouter = require('./transcript');
-const { runPoll } = require('./poller');
+const { runPoll, runChatPoll } = require('./poller');
 const { getRecentContacts, getContactMessages } = require('./tidio');
 const { summarizeConversation } = require('./summarize');
 const { sendConversationEmail } = require('./email');
+const { queries } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+app.use(express.json());
+
+// CORS for /chat-event (called from Tidio widget page on a different domain)
+app.options('/chat-event', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(204);
+});
+
+app.post('/chat-event', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const { visitorId, actor, message, timestamp } = req.body || {};
+  if (!visitorId || !actor || !message) {
+    return res.status(400).json({ error: 'missing fields' });
+  }
+  try {
+    queries.insertChatEvent.run(visitorId, actor, message, timestamp || new Date().toISOString());
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('chat-event insert error:', err.message);
+    res.status(500).json({ error: 'db error' });
+  }
+});
 
 app.use(transcriptRouter);
 
@@ -78,9 +104,11 @@ app.get('/test', async (req, res) => {
 // Poll every 5 minutes
 cron.schedule('*/5 * * * *', () => {
   runPoll().catch(err => console.error('Poll error:', err));
+  runChatPoll().catch(err => console.error('Chat poll error:', err));
 });
 
 app.listen(PORT, () => {
   console.log(`Tidio emailer running on :${PORT}`);
   runPoll().catch(err => console.error('Initial poll error:', err));
+  runChatPoll().catch(err => console.error('Initial chat poll error:', err));
 });
