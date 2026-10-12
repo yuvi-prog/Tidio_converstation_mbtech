@@ -108,4 +108,79 @@ async function runPoll() {
   }
 }
 
-module.exports = { runPoll };
+async function runChatPoll() {
+  const cutoff3h = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+  const inactiveCutoff = new Date(Date.now() - INACTIVITY_MS).toISOString();
+
+  let sessions;
+  try {
+    sessions = queries.getInactiveSessions.all(cutoff3h, inactiveCutoff);
+  } catch (err) {
+    console.error('getInactiveSessions error:', err.message);
+    return;
+  }
+  if (!sessions.length) return;
+
+  console.log(`[chat-poll] ${sessions.length} inactive widget session(s)`);
+
+  for (const session of sessions) {
+    const { visitor_id, last_at, first_at, msg_count } = session;
+
+    const existing = queries.threadEmailed.get(visitor_id);
+    if (existing) {
+      const emailedAt = new Date(existing.emailed_at).getTime();
+      const lastMsgAt = new Date(last_at).getTime();
+      if (emailedAt > lastMsgAt) continue;
+    }
+
+    const rawEvents = queries.getSessionMessages.all(visitor_id, cutoff3h);
+    const messages = rawEvents.map(e => ({
+      actor:           e.actor,
+      message_content: e.message,
+      time_sent:       e.received_at,
+      thread_id:       visitor_id,
+      visitor_id:      visitor_id,
+    }));
+
+    const minsAgo = Math.round((Date.now() - new Date(last_at).getTime()) / 60000);
+    console.log(`  Widget ${visitor_id}: ${messages.length} msgs, last ${minsAgo}min ago`);
+
+    let summary = `Conversation with ${messages.length} messages.`;
+    try {
+      summary = await summarizeConversation(messages, null);
+    } catch (err) {
+      console.error('  Summarize failed:', err.message);
+    }
+
+    const transcriptId = uuidv4();
+    queries.insertTranscript.run(
+      transcriptId, visitor_id, null, null,
+      JSON.stringify(messages), summary
+    );
+
+    const transcriptUrl = `${process.env.BASE_URL || 'http://localhost:3000'}/transcript/${transcriptId}`;
+
+    try {
+      await sendConversationEmail({
+        contactName:  null,
+        contactEmail: null,
+        summary,
+        transcriptUrl,
+        messageCount: messages.length,
+        sessionStart: first_at,
+        sessionEnd:   last_at,
+      });
+
+      queries.insertEmailedThread.run(
+        visitor_id, visitor_id, null, null,
+        transcriptId, first_at, last_at, messages.length
+      );
+
+      console.log(`  ✓ Widget email sent (transcript ${transcriptId})`);
+    } catch (err) {
+      console.error('  Email failed:', err.message);
+    }
+  }
+}
+
+module.exports = { runPoll, runChatPoll };
