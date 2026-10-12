@@ -19,6 +19,7 @@ async function processSession(session, cutoff3h) {
   const rawEvents = queries.getSessionMessages.all(visitor_id, since);
   if (!rawEvents.length) return;
   if (!rawEvents.some(e => e.actor === 'visitor')) return; // bot greeting only, no real conversation
+  console.log(`  Session ${visitor_id}: preparing email`);
 
   const messages = rawEvents.map(e => ({
     actor:           e.actor,

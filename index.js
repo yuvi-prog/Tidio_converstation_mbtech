@@ -36,6 +36,7 @@ app.post('/chat-event', (req, res) => {
       return res.status(429).json({ error: 'rate limited' });
     }
     queries.insertChatEvent.run(visitorId, actor, message.trim().slice(0, MAX_MESSAGE_LEN), new Date().toISOString());
+    console.log(`[chat-event] ${visitorId} ${actor}: ${message.trim().slice(0, 60)}`);
     res.json({ ok: true });
   } catch (err) {
     console.error('chat-event insert error:', err.message);
